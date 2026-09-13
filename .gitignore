@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+.venv/
+node_modules/
+dist/
+data/uploads/*
+!data/uploads/.gitkeep
+outputs/charts/*
+!outputs/charts/.gitkeep
+outputs/reports/*
+!outputs/reports/.gitkeep

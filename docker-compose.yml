@@ -1,0 +1,91 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-datapilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-datapilot123}
+      POSTGRES_DB: ${POSTGRES_DB:-datapilot}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-datapilot} -d ${POSTGRES_DB:-datapilot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "6379:6379"
+
+  python-sandbox:
+    build: ./sandbox
+    environment:
+      DATA_ROOT: /data
+      EXEC_TIMEOUT_SECONDS: ${SANDBOX_TIMEOUT_SECONDS:-8}
+    volumes:
+      - ./data/uploads:/data:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m
+    mem_limit: 512m
+    cpus: 1.0
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - sandbox_net
+
+  backend:
+    build: ./backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-datapilot}:${POSTGRES_PASSWORD:-datapilot123}@postgres:5432/${POSTGRES_DB:-datapilot}
+      REDIS_URL: redis://redis:6379/0
+      SANDBOX_URL: http://python-sandbox:8001
+      UPLOAD_DIR: /app/data/uploads
+      CHART_DIR: /app/outputs/charts
+      REPORT_DIR: /app/outputs/reports
+    volumes:
+      - ./data/uploads:/app/data/uploads
+      - ./outputs/charts:/app/outputs/charts
+      - ./outputs/reports:/app/outputs/reports
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      python-sandbox:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    networks:
+      - default
+      - sandbox_net
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  sandbox_net:
+    internal: true
